@@ -1,1 +1,1 @@
-Thin wrapper around Pandas that add map and filter that take tuples
+Thin wrapper around Pandas that adds map and filter which take tuples
