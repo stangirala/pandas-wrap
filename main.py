@@ -1,6 +1,14 @@
 import pandas as pd
 import numpy as np
 
+class PositionTuple:
+  def __init__(self, *args):
+    for pos, arg in enumerate(args):
+      setattr(self, '_'+str(pos+1), arg)
+
+  def __str__(self):
+    return ' '.join(','.join(map(str, [k, v])) for k, v in self.__dict__.items())
+
 class WrapDataFrame():
   def __init__(self, df):
     self.dataframe = df
@@ -37,11 +45,23 @@ class WrapDataFrame():
 
     for value_row in value_rows:
       # TODO add map failure
-      mapped_row = map_function(tuple(value_row))
+      mapped_row = map_function(PositionTuple(*value_row.tolist()))
       mapped_rows.append(mapped_row)
 
     # TODO handle index setting
     return WrapDataFrame(pd.DataFrame(mapped_rows))
+
+  def filter(self, filter_function):
+    value_rows = self.dataframe.values
+    filtered_row = []
+
+    for value_row in value_rows:
+      # TODO add map failure
+      pos_tuple = PositionTuple(*value_row.tolist())
+      if filter_function(pos_tuple):
+        filtered_row.append(value_row)
+
+    return WrapDataFrame(pd.DataFrame(filtered_row))
 
   def __str__(self):
     return str(self.dataframe)
@@ -54,7 +74,8 @@ def test_select(wdf):
     pass
 
 def test_map(wdf):
-  print(wdf.map(lambda x: x[0]+x[1], ('A', 'C')))
+  # map functions expect a positional tuple
+  print(wdf.map(lambda tup: tup._1+tup._2, ('A', 'C')))
 
 if __name__ == '__main__':
   df = pd.DataFrame({'A' : ['one', 'one', 'two', 'three'] * 3,
@@ -67,4 +88,5 @@ if __name__ == '__main__':
   #test_select(wdf)
   #test_map(wdf)
 
-  print(wdf.select_by_position(1, 2, 3))
+  #print(wdf.select_by_position(1, 2, 3))
+  print(wdf.filter(lambda x: x._1 != 'one' and x._2 != 'C'))
