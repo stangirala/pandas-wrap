@@ -15,6 +15,7 @@ class WrapDataFrame():
     self.dataframe = df
     self.dataframe_columns = df.columns
     self.values = self.dataframe.values
+    self.size = self.dataframe.size
 
   def select(self, *args):
     for arg in args:
@@ -48,6 +49,24 @@ class WrapDataFrame():
 
     # TODO handle index setting
     return WrapDataFrame(pd.DataFrame(mapped_rows))
+
+  def typed_map(self, map_function, return_type, select_columns):
+    for column in select_columns:
+      if column not in self.dataframe_columns:
+        raise Exception('Could not select column: ' + column)
+
+    # Assume return_type is a numpy dtype and uses that to handle allocated numpy arrays
+    assert type(return_type) == np.dtype
+    mapped_data_array = np.empty(shape=(self.size, 1), dtype=return_type)
+
+    wdf = self.select(*select_columns)
+    value_rows = wdf.values
+    for ind, value_row in enumerate(value_rows):
+      mapped_row = map_function(PositionTuple(*value_row.tolist()))
+      mapped_data_array[ind, 0] = mapped_row
+
+    # TODO handle index setting
+    return WrapDataFrame(pd.DataFrame(mapped_data_array))
 
   def filter(self, filter_function):
     value_rows = self.dataframe.values
@@ -122,6 +141,23 @@ def test_map():
   expected_pairs = list(zip(data['A'], data['C']))
   for actual_str, expected_pair in zip(wdf.values, expected_pairs):
     assert actual_str[0] == ''.join(expected_pair[0]+expected_pair[1])
+
+def test_typed_map():
+  # map functions expect a positional tuple
+  data = {'A' : ['one', 'one', 'two', 'three'],
+          'B' : ['A', 'B', 'C', 'D'],
+          'C' : ['foo', 'foo', 'bar', 'bar'],
+          'D' : [1, 2, 3, 4],
+          'E' : np.random.randn(4)}
+  df = pd.DataFrame(data)
+  wdf = WrapDataFrame(df)
+
+  map_return_type = np.dtype('a20')
+
+  wdf = wdf.typed_map(lambda tup: tup._1+tup._2, map_return_type, ('A', 'C'))
+  expected_pairs = list(zip(data['A'], data['C']))
+  for actual_str, expected_pair in zip(wdf.values, expected_pairs):
+    assert actual_str[0].decode('utf-8') == ''.join(expected_pair[0]+expected_pair[1])
 
 def test_filter():
   # filter functions expect a positional tuple
