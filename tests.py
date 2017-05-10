@@ -1,97 +1,9 @@
 import pandas as pd
 import numpy as np
 import pytest
+import random
 
-class PositionTuple:
-  def __init__(self, *args):
-    for pos, arg in enumerate(args):
-      setattr(self, '_'+str(pos+1), arg)
-
-  def __str__(self):
-    return ' '.join(','.join(map(str, [k, v])) for k, v in self.__dict__.items())
-
-class WrapDataFrame():
-  def __init__(self, df):
-    self.dataframe = df
-    self.dataframe_columns = df.columns
-    self.values = self.dataframe.values
-    self.size = self.dataframe.size
-
-  def select(self, *args):
-    for arg in args:
-      if arg not in self.dataframe_columns:
-        raise Exception('Column not found: ' + arg)
-
-    return WrapDataFrame(self.dataframe[list(args)])
-
-  def selectByPosition(self, *args):
-    if not all([str(arg).isdigit() for arg in args]):
-      raise Exception('Column position was not a number')
-
-    positions = sorted(args)
-    if len(self.dataframe_columns) <= args[-1] or args[-1] < 0:
-      raise Exception('Max column position > number of available columns')
-
-    return WrapDataFrame(self.dataframe[list(positions)])
-
-  def map(self, map_function, select_columns):
-    for column in select_columns:
-      if column not in self.dataframe_columns:
-        raise Exception('Could not select column: ' + column)
-
-    wdf = self.select(*select_columns)
-    value_rows = wdf.values
-    mapped_rows = []
-
-    for value_row in value_rows:
-      mapped_row = map_function(PositionTuple(*value_row.tolist()))
-      mapped_rows.append(mapped_row)
-
-    # TODO handle index setting
-    return WrapDataFrame(pd.DataFrame(mapped_rows))
-
-  def typed_map(self, map_function, return_type, select_columns):
-    for column in select_columns:
-      if column not in self.dataframe_columns:
-        raise Exception('Could not select column: ' + column)
-
-    # Assume return_type is a numpy dtype and uses that to handle allocated numpy arrays
-    assert type(return_type) == np.dtype
-    mapped_data_array = np.empty(shape=(self.size, 1), dtype=return_type)
-
-    wdf = self.select(*select_columns)
-    value_rows = wdf.values
-    for ind, value_row in enumerate(value_rows):
-      mapped_row = map_function(PositionTuple(*value_row.tolist()))
-      mapped_data_array[ind, 0] = mapped_row
-
-    # TODO handle index setting
-    return WrapDataFrame(pd.DataFrame(mapped_data_array))
-
-  def filter(self, filter_function):
-    value_rows = self.dataframe.values
-    filtered_row = []
-
-    for value_row in value_rows:
-      pos_tuple = PositionTuple(*value_row.tolist())
-      if filter_function(pos_tuple):
-        filtered_row.append(value_row)
-
-    return WrapDataFrame(pd.DataFrame(filtered_row))
-
-  def foldLeft(self, acc_zero_value, fold_function):
-    value_rows = self.dataframe.values
-
-    acc = acc_zero_value
-
-    for value_row in value_rows:
-      pos_tuple = PositionTuple(*value_row.tolist())
-      acc = fold_function(acc, pos_tuple)
-
-    return acc
-
-  def __str__(self):
-    return str(self.dataframe)
+from pandas_wrap import WrapDataFrame
 
 def test_select():
   data = {'A' : ['one', 'one', 'two', 'three'],
@@ -108,7 +20,7 @@ def test_select():
     assert tuple(actual_pair) == expected_pair
 
   with pytest.raises(Exception):
-    _df = wdf.select('some column', 'C')
+    wdf.select('some column', 'C')
 
 def test_select_by_position():
   data = {'A' : ['one', 'one', 'two', 'three'],
@@ -125,8 +37,8 @@ def test_select_by_position():
     assert tuple(actual_pair) == expected_pair
 
   with pytest.raises(Exception):
-    _df = wdf.selectByPosition(-1)
-    _df = wdf.selectByPosition(5)
+    wdf.selectByPosition(-1)
+    wdf.selectByPosition(5)
 
 def test_map():
   # map functions expect a positional tuple
@@ -185,3 +97,33 @@ def test_fold_left():
   wdf = WrapDataFrame(df).select('D')
   foldValue = wdf.foldLeft(0, lambda acc, tup: acc+tup._1)
   assert foldValue == 10
+
+def map_operation(wdf):
+  foldValue = wdf.foldLeft(0, lambda acc, tup: acc+tup._1)
+
+def typed_map_operation(wdf):
+  foldValue = wdf.foldLeft(0, lambda acc, tup: acc+tup._1)
+
+def test_map_perf():
+    import timeit
+    # Early 2015 MBP
+    number = 50000
+    map_op = timeit.timeit('map_operation(m)', number=number, setup='from __main__ import map_operation, m')
+    typed_map = timeit.timeit('typed_map_operation(tm)', number=number, setup='from __main__ import typed_map_operation, tm')
+    print('map_op', map_op)
+    print('typed_map', typed_map)
+
+if __name__ == '__main__':
+    data = {'A' : ['one', 'one', 'two', 'three'],
+          'B' : ['A', 'B', 'C', 'D'],
+          'C' : ['foo', 'foo', 'bar', 'bar'],
+          'D' : [1, 2, 3, 4],
+          'E' : np.random.randn(4)}
+    df = pd.DataFrame(data)
+    wdf = WrapDataFrame(df)
+    m = wdf.map(lambda tup: (tup._1+tup._2, tup._1**2), ('D', 'E'))
+
+    map_return_type = np.dtype([('f1', 'u8'), ('f2', 'u8')])
+    tm = wdf.typed_map(lambda tup: (tup._1+tup._2, tup._1**2), map_return_type, ('D', 'E'))
+
+    test_map_perf()

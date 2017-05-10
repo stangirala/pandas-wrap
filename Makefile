@@ -1,2 +1,2 @@
 test:
-	pytest -k 'test_' -v main.py
+	pytest -k 'test_' -v tests.py
